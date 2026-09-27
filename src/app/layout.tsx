@@ -1,0 +1,39 @@
+/**
+ * Root layout (Server Component by default).
+ *
+ * Next.js wraps every page in this file. Put fonts, the HTML shell, and
+ * global CSS here — not in individual pages — so they load once.
+ */
+
+import type { Metadata } from "next";
+import { Geist, Geist_Mono } from "next/font/google";
+import "./globals.css";
+
+const geistSans = Geist({
+  variable: "--font-geist-sans",
+  subsets: ["latin"],
+});
+
+const geistMono = Geist_Mono({
+  variable: "--font-geist-mono",
+  subsets: ["latin"],
+});
+
+export const metadata: Metadata = {
+  title: "Auto-Recon Agent",
+  description: "Upload a bank statement and accounting ledger, then reconcile them side by side.",
+};
+
+export default function RootLayout({
+  children,
+}: Readonly<{
+  children: React.ReactNode;
+}>) {
+  return (
+    <html lang="en">
+      <body className={`${geistSans.variable} ${geistMono.variable} min-h-screen antialiased`}>
+        {children}
+      </body>
+    </html>
+  );
+}

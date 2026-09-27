@@ -21,8 +21,8 @@ export default function HomePage() {
           Bank vs ledger
         </h1>
         <p className="mt-2 max-w-2xl text-slate-600">
-          Upload two CSV files. We parse them in the browser and show both
-          datasets side by side. Matching and saving to Supabase come next.
+          Upload two CSV files. We parse them in the browser, preview them side
+          by side, then save a session plus both line lists to Supabase.
         </p>
       </header>
 

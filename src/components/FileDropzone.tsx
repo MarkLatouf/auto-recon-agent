@@ -54,6 +54,8 @@ export function FileDropzone({
       setIsReading(true);
 
       try {
+        // Papa Parse runs here in the browser; the dashboard saves to Supabase
+        // only after *both* CSVs have been parsed.
         const data = await parseCsvFile(file, kind);
         onParsed(data);
       } catch (err) {

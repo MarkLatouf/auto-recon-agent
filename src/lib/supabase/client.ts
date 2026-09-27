@@ -1,11 +1,9 @@
 /**
- * Browser-side Supabase client (placeholder for the next step).
+ * Browser-side Supabase client.
  *
  * `createBrowserClient` is safe to use in Client Components because it uses
  * the public "anon" key, not the secret service-role key.
- *
- * We are not calling the database yet — this file just centralizes setup
- * so later features (saving matches, auth) import one helper.
+ * Every insert in persistRecon.ts goes through this helper.
  */
 
 import { createBrowserClient } from "@supabase/ssr";

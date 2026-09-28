@@ -7,14 +7,15 @@
  * 1) shows two upload dropzones
  * 2) previews both tables
  * 3) when both files are ready, inserts a recon_sessions row plus line rows
- *
  * 4) Auto-Match loads those rows and runs Tier 1 + Tier 2 pairing
+ * 5) Save Matches writes the pairs into the `matches` table
  */
 
 import { useCallback, useState } from "react";
 import type { MatchResult, ParsedCsv } from "@/lib/types";
 import { autoMatch } from "@/lib/recon/matching";
 import { loadSessionLines } from "@/lib/supabase/loadSessionLines";
+import { persistMatches } from "@/lib/supabase/persistMatches";
 import { persistReconUpload } from "@/lib/supabase/persistRecon";
 import { CsvTable } from "./CsvTable";
 import { FileDropzone } from "./FileDropzone";
@@ -32,15 +33,25 @@ type MatchUiState =
   | { status: "done"; result: MatchResult }
   | { status: "error"; message: string };
 
+type PersistMatchesState =
+  | { status: "idle" }
+  | { status: "saving" }
+  | { status: "saved"; savedCount: number }
+  | { status: "error"; message: string };
+
 export function ReconDashboard() {
   const [bank, setBank] = useState<ParsedCsv | null>(null);
   const [ledger, setLedger] = useState<ParsedCsv | null>(null);
   const [saveState, setSaveState] = useState<SaveState>({ status: "idle" });
   const [matchState, setMatchState] = useState<MatchUiState>({ status: "idle" });
+  const [persistMatchesState, setPersistMatchesState] = useState<PersistMatchesState>({
+    status: "idle",
+  });
 
   const saveToSupabase = useCallback(async (nextBank: ParsedCsv, nextLedger: ParsedCsv) => {
     setSaveState({ status: "saving" });
     setMatchState({ status: "idle" });
+    setPersistMatchesState({ status: "idle" });
     try {
       const result = await persistReconUpload(nextBank, nextLedger);
       setSaveState({ status: "saved", ...result });
@@ -52,6 +63,7 @@ export function ReconDashboard() {
 
   const runAutoMatch = useCallback(async (sessionId: string) => {
     setMatchState({ status: "running" });
+    setPersistMatchesState({ status: "idle" });
     try {
       const { bankLines, ledgerLines } = await loadSessionLines(sessionId);
       setMatchState({ status: "done", result: autoMatch(bankLines, ledgerLines) });
@@ -61,11 +73,23 @@ export function ReconDashboard() {
     }
   }, []);
 
+  const saveMatchesToSupabase = useCallback(async (sessionId: string, result: MatchResult) => {
+    setPersistMatchesState({ status: "saving" });
+    try {
+      const { savedCount } = await persistMatches(sessionId, result.matched);
+      setPersistMatchesState({ status: "saved", savedCount });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Could not save matches.";
+      setPersistMatchesState({ status: "error", message });
+    }
+  }, []);
+
   const handleBank = useCallback(
     (data: ParsedCsv) => {
       setBank(data);
       setSaveState({ status: "idle" });
       setMatchState({ status: "idle" });
+      setPersistMatchesState({ status: "idle" });
       if (ledger) void saveToSupabase(data, ledger);
     },
     [ledger, saveToSupabase],
@@ -76,6 +100,7 @@ export function ReconDashboard() {
       setLedger(data);
       setSaveState({ status: "idle" });
       setMatchState({ status: "idle" });
+      setPersistMatchesState({ status: "idle" });
       if (bank) void saveToSupabase(bank, data);
     },
     [bank, saveToSupabase],
@@ -94,6 +119,7 @@ export function ReconDashboard() {
             setBank(null);
             setSaveState({ status: "idle" });
             setMatchState({ status: "idle" });
+            setPersistMatchesState({ status: "idle" });
           }}
         />
         <FileDropzone
@@ -106,6 +132,7 @@ export function ReconDashboard() {
             setLedger(null);
             setSaveState({ status: "idle" });
             setMatchState({ status: "idle" });
+            setPersistMatchesState({ status: "idle" });
           }}
         />
       </div>
@@ -204,7 +231,62 @@ export function ReconDashboard() {
           </p>
         ) : null}
 
-        {matchState.status === "done" ? <MatchResults result={matchState.result} /> : null}
+        {matchState.status === "done" ? (
+          <>
+            <div className="flex flex-wrap items-center gap-3">
+              <button
+                type="button"
+                disabled={
+                  persistMatchesState.status === "saving" ||
+                  persistMatchesState.status === "saved" ||
+                  matchState.result.matched.length === 0
+                }
+                onClick={() => {
+                  if (saveState.status !== "saved") return;
+                  void saveMatchesToSupabase(saveState.sessionId, matchState.result);
+                }}
+                className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-300"
+              >
+                {persistMatchesState.status === "saving"
+                  ? "Saving matches…"
+                  : persistMatchesState.status === "saved"
+                    ? "Matches saved"
+                    : "Save Matches"}
+              </button>
+              {matchState.result.matched.length === 0 ? (
+                <p className="text-sm text-slate-500">No pairs to save.</p>
+              ) : null}
+            </div>
+
+            {persistMatchesState.status === "saved" ? (
+              <p className="rounded-xl bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
+                Saved {persistMatchesState.savedCount === 1
+                  ? "1 pair"
+                  : `${persistMatchesState.savedCount} pairs`}{" "}
+                to <code className="rounded bg-white px-1">matches</code>.
+              </p>
+            ) : null}
+
+            {persistMatchesState.status === "error" ? (
+              <div className="rounded-xl bg-red-50 px-4 py-3 text-sm text-red-700" role="alert">
+                <p>{persistMatchesState.message}</p>
+                {saveState.status === "saved" ? (
+                  <button
+                    type="button"
+                    className="mt-2 rounded-lg border border-red-200 bg-white px-3 py-1 text-red-800 hover:bg-red-50"
+                    onClick={() =>
+                      void saveMatchesToSupabase(saveState.sessionId, matchState.result)
+                    }
+                  >
+                    Retry save matches
+                  </button>
+                ) : null}
+              </div>
+            ) : null}
+
+            <MatchResults result={matchState.result} />
+          </>
+        ) : null}
       </section>
     </div>
   );

@@ -9,7 +9,7 @@ import { daysBetween, toIsoDate } from "@/lib/recon/matching";
 import { createClient } from "@/lib/supabase/client";
 import { loadSessionLines } from "@/lib/supabase/loadSessionLines";
 import { tierFromMatchType } from "@/lib/supabase/persistMatches";
-import type { CsvRow, LoadedSession, ParsedCsv, ReconLine, SessionSummary } from "@/lib/types";
+import type { CsvRow, LoadedSession, MatchedPair, ParsedCsv, ReconLine, SessionSummary } from "@/lib/types";
 
 type SessionRow = {
   id: string;
@@ -103,6 +103,81 @@ export async function listReconSessions(): Promise<SessionSummary[]> {
     ledgerFilename: row.ledger_filename,
     matchCount: counts.get(row.id) ?? 0,
   }));
+}
+
+type JoinedLine = {
+  id?: string;
+  session_id?: string;
+  transaction_date: string | null;
+  description: string | null;
+  amount: number | string | null;
+};
+
+type JoinedMatchRow = {
+  match_type: string;
+  bank_lines: JoinedLine | JoinedLine[] | null;
+  ledger_lines: JoinedLine | JoinedLine[] | null;
+};
+
+function firstRelated<T>(value: T | T[] | null | undefined): T | null {
+  if (!value) return null;
+  return Array.isArray(value) ? (value[0] ?? null) : value;
+}
+
+function joinedToLine(row: JoinedLine, source: ReconLine["source"], sessionId: string): ReconLine {
+  return {
+    id: row.id ?? "",
+    session_id: row.session_id ?? sessionId,
+    transaction_date: row.transaction_date,
+    description: row.description,
+    amount: row.amount === null ? null : Number(row.amount),
+    raw_data: null,
+    source,
+  };
+}
+
+/**
+ * Saved matches for one session, with bank and ledger columns in the same query.
+ *
+ * `.select("match_type, bank_lines(...), ledger_lines(...)")` is a PostgREST
+ * *embed* (join): it follows matches.bank_line_id → bank_lines and
+ * matches.ledger_line_id → ledger_lines. `.eq("session_id", id)` keeps it
+ * to this session only.
+ */
+export async function loadSessionMatchesForExport(sessionId: string): Promise<MatchedPair[]> {
+  const supabase = createClient();
+
+  const joined = await supabase
+    .from("matches")
+    .select(
+      "match_type, bank_lines(id, session_id, transaction_date, description, amount), ledger_lines(id, session_id, transaction_date, description, amount)",
+    )
+    .eq("session_id", sessionId);
+
+  if (!joined.error && joined.data) {
+    return (joined.data as JoinedMatchRow[]).flatMap((row) => {
+      const bankRow = firstRelated(row.bank_lines);
+      const ledgerRow = firstRelated(row.ledger_lines);
+      if (!bankRow || !ledgerRow) return [];
+
+      const bank = joinedToLine(bankRow, "bank", sessionId);
+      const ledger = joinedToLine(ledgerRow, "ledger", sessionId);
+      const bankDate = toIsoDate(bank.transaction_date);
+      const ledgerDate = toIsoDate(ledger.transaction_date);
+
+      return [
+        {
+          bank,
+          ledger,
+          tier: tierFromMatchType(row.match_type),
+          dateDiffDays: bankDate && ledgerDate ? daysBetween(bankDate, ledgerDate) : 0,
+        },
+      ];
+    });
+  }
+
+  const loaded = await loadReconSession(sessionId);
+  return loaded.matchResult.matched;
 }
 
 /**

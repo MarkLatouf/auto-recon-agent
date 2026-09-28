@@ -17,6 +17,7 @@ import { autoMatch, daysBetween, toIsoDate } from "@/lib/recon/matching";
 import { loadSessionLines } from "@/lib/supabase/loadSessionLines";
 import { persistManualMatch, persistMatches } from "@/lib/supabase/persistMatches";
 import { persistReconUpload } from "@/lib/supabase/persistRecon";
+import { exportMatchedCsv } from "@/lib/exportMatchedCsv";
 import type { LoadedSession, MatchResult, MatchedPair, ParsedCsv } from "@/lib/types";
 import { CsvTable } from "./CsvTable";
 import { FileDropzone } from "./FileDropzone";
@@ -407,6 +408,14 @@ export function ReconDashboard({
                   : persistMatchesState.status === "saved"
                     ? "Matches saved"
                     : "Save Matches"}
+              </button>
+              <button
+                type="button"
+                disabled={matchState.result.matched.length === 0}
+                onClick={() => exportMatchedCsv(matchState.result.matched)}
+                className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-800 hover:bg-slate-50 disabled:cursor-not-allowed disabled:border-slate-200 disabled:bg-slate-100 disabled:text-slate-400"
+              >
+                Export Matched to CSV
               </button>
               {matchState.result.matched.length === 0 ? (
                 <p className="text-sm text-slate-500">No pairs to save.</p>

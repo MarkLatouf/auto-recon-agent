@@ -28,6 +28,7 @@ export type MatchInsert = {
 /** Maps our in-memory tier to the `matches.match_type` text column. */
 export function matchTypeFromTier(tier: MatchTier): string {
   if (tier === "manual") return "manual";
+  if (tier === 3) return "tier_3";
   return tier === 1 ? "tier_1" : "tier_2";
 }
 
@@ -57,7 +58,7 @@ export async function persistMatches(
   pairs: MatchedPair[],
 ): Promise<{ savedCount: number }> {
   // Manual pairs are inserted as soon as the user clicks Manual Match,
-  // so the bulk save only sends Auto-Match (tier 1 / 2) rows.
+  // so the bulk save only sends Auto-Match (tier 1 / 2 / 3) rows.
   const autoPairs = pairs.filter((pair) => pair.tier !== "manual");
   if (autoPairs.length === 0) {
     return { savedCount: 0 };
@@ -65,13 +66,31 @@ export async function persistMatches(
 
   const supabase = createClient();
 
-  // Loop the UI’s Matched Pairs and shape them into table rows.
-  const rows: MatchInsert[] = autoPairs.map((pair) => ({
-    session_id: sessionId,
-    bank_line_id: pair.bank.id,
-    ledger_line_id: pair.ledger.id,
-    match_type: matchTypeFromTier(pair.tier),
-  }));
+  // Skip pairs already stored (e.g. user saved Tier 1/2, then ran AI Match).
+  const { data: existing, error: existingError } = await supabase
+    .from("matches")
+    .select("bank_line_id, ledger_line_id")
+    .eq("session_id", sessionId);
+  if (existingError) {
+    throw new Error(`Could not read matches: ${existingError.message}`);
+  }
+
+  const alreadySaved = new Set(
+    (existing ?? []).map((row) => `${row.bank_line_id}:${row.ledger_line_id}`),
+  );
+
+  const rows: MatchInsert[] = autoPairs
+    .map((pair) => ({
+      session_id: sessionId,
+      bank_line_id: pair.bank.id,
+      ledger_line_id: pair.ledger.id,
+      match_type: matchTypeFromTier(pair.tier),
+    }))
+    .filter((row) => !alreadySaved.has(`${row.bank_line_id}:${row.ledger_line_id}`));
+
+  if (rows.length === 0) {
+    return { savedCount: 0 };
+  }
 
   const chunkSize = 500;
   for (let i = 0; i < rows.length; i += chunkSize) {

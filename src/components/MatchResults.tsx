@@ -14,8 +14,13 @@ function money(amount: number | null): string {
   return amount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
-function pairLabel(tier: MatchTier, dateDiffDays: number): string {
+function pairLabel(tier: MatchTier, dateDiffDays: number, similarity?: number): string {
   if (tier === "manual") return "Manual";
+  if (tier === 3) {
+    const score =
+      similarity === undefined ? "" : ` · ${(similarity * 100).toFixed(0)}% similar`;
+    return `Tier 3 · AI Semantic${score}`;
+  }
   if (tier === 2) return `Tier 2 · ${dateDiffDays} day gap`;
   return "Tier 1 · same date";
 }
@@ -118,10 +123,20 @@ export function MatchResults({
             {result.matched.map((pair) => (
               <li
                 key={`${pair.bank.id}-${pair.ledger.id}`}
-                className="rounded-lg border border-emerald-100 bg-emerald-50 px-3 py-2 text-sm"
+                className={
+                  pair.tier === 3
+                    ? "rounded-lg border border-violet-200 bg-violet-50 px-3 py-2 text-sm"
+                    : "rounded-lg border border-emerald-100 bg-emerald-50 px-3 py-2 text-sm"
+                }
               >
-                <p className="text-xs font-medium uppercase tracking-wide text-emerald-800">
-                  {pairLabel(pair.tier, pair.dateDiffDays)}
+                <p
+                  className={
+                    pair.tier === 3
+                      ? "text-xs font-medium uppercase tracking-wide text-violet-800"
+                      : "text-xs font-medium uppercase tracking-wide text-emerald-800"
+                  }
+                >
+                  {pairLabel(pair.tier, pair.dateDiffDays, pair.similarity)}
                 </p>
                 <p className="mt-1 text-slate-800">
                   Bank: {pair.bank.description ?? "—"} ({money(pair.bank.amount)})

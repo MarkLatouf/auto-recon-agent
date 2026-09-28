@@ -31,8 +31,8 @@ export type ReconLine = {
   source: DatasetKind;
 };
 
-/** Auto tiers, or a pair the user chose by hand. */
-export type MatchTier = 1 | 2 | "manual";
+/** Auto tiers, a hand-picked pair, or AI semantic match. */
+export type MatchTier = 1 | 2 | 3 | "manual";
 
 export type MatchedPair = {
   bank: ReconLine;
@@ -40,6 +40,8 @@ export type MatchedPair = {
   tier: MatchTier;
   /** Absolute calendar-day gap used to choose the pair (0 for Tier 1). */
   dateDiffDays: number;
+  /** Cosine similarity for Tier 3 (0–1). */
+  similarity?: number;
 };
 
 export type MatchResult = {

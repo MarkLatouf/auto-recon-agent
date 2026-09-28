@@ -9,11 +9,11 @@
  * 3) when both files are ready, inserts a recon_sessions row plus line rows
  * 4) Auto-Match loads those rows and runs Tier 1 + Tier 2 pairing
  * 5) Save Matches writes Auto-Match pairs into the `matches` table
- * 6) Manual Match lets the user pick one unmatched bank + ledger line
+ * 7) Run AI Match embeds unmatched lines and pairs them by cosine similarity
  */
 
 import { useCallback, useState } from "react";
-import type { MatchResult, ParsedCsv } from "@/lib/types";
+import type { MatchResult, MatchedPair, ParsedCsv } from "@/lib/types";
 import { autoMatch, daysBetween, toIsoDate } from "@/lib/recon/matching";
 import { loadSessionLines } from "@/lib/supabase/loadSessionLines";
 import { persistManualMatch, persistMatches } from "@/lib/supabase/persistMatches";
@@ -54,6 +54,8 @@ export function ReconDashboard() {
   const [selectedLedgerLineId, setSelectedLedgerLineId] = useState<string | null>(null);
   const [manualMatchError, setManualMatchError] = useState<string | null>(null);
   const [isSavingManual, setIsSavingManual] = useState(false);
+  const [isRunningAi, setIsRunningAi] = useState(false);
+  const [aiMatchError, setAiMatchError] = useState<string | null>(null);
 
   const saveToSupabase = useCallback(async (nextBank: ParsedCsv, nextLedger: ParsedCsv) => {
     setSaveState({ status: "saving" });
@@ -62,6 +64,7 @@ export function ReconDashboard() {
     setSelectedBankLineId(null);
     setSelectedLedgerLineId(null);
     setManualMatchError(null);
+    setAiMatchError(null);
     try {
       const result = await persistReconUpload(nextBank, nextLedger);
       setSaveState({ status: "saved", ...result });
@@ -77,6 +80,7 @@ export function ReconDashboard() {
     setSelectedBankLineId(null);
     setSelectedLedgerLineId(null);
     setManualMatchError(null);
+    setAiMatchError(null);
     try {
       const { bankLines, ledgerLines } = await loadSessionLines(sessionId);
       setMatchState({ status: "done", result: autoMatch(bankLines, ledgerLines) });
@@ -140,6 +144,55 @@ export function ReconDashboard() {
     }
   }, [saveState, matchState, selectedBankLineId, selectedLedgerLineId]);
 
+  const runAiMatch = useCallback(async () => {
+    if (saveState.status !== "saved" || matchState.status !== "done") return;
+
+    const unmatchedBank = matchState.result.unmatchedBank;
+    const unmatchedLedger = matchState.result.unmatchedLedger;
+    if (unmatchedBank.length === 0 || unmatchedLedger.length === 0) return;
+
+    setIsRunningAi(true);
+    setAiMatchError(null);
+    try {
+      const response = await fetch("/api/recon/ai-match", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          sessionId: saveState.sessionId,
+          unmatchedBankIds: unmatchedBank.map((line) => line.id),
+          unmatchedLedgerIds: unmatchedLedger.map((line) => line.id),
+        }),
+      });
+      const payload = (await response.json()) as { pairs?: MatchedPair[]; error?: string };
+      if (!response.ok) {
+        throw new Error(payload.error ?? "AI match failed.");
+      }
+
+      const newPairs = payload.pairs ?? [];
+      const usedBank = new Set(newPairs.map((pair) => pair.bank.id));
+      const usedLedger = new Set(newPairs.map((pair) => pair.ledger.id));
+
+      setMatchState({
+        status: "done",
+        result: {
+          matched: [...matchState.result.matched, ...newPairs],
+          unmatchedBank: unmatchedBank.filter((line) => !usedBank.has(line.id)),
+          unmatchedLedger: unmatchedLedger.filter((line) => !usedLedger.has(line.id)),
+        },
+      });
+      setSelectedBankLineId(null);
+      setSelectedLedgerLineId(null);
+      if (newPairs.length > 0) {
+        setPersistMatchesState({ status: "idle" });
+      }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "AI match failed.";
+      setAiMatchError(message);
+    } finally {
+      setIsRunningAi(false);
+    }
+  }, [saveState, matchState]);
+
   const handleBank = useCallback(
     (data: ParsedCsv) => {
       setBank(data);
@@ -149,6 +202,7 @@ export function ReconDashboard() {
       setSelectedBankLineId(null);
       setSelectedLedgerLineId(null);
       setManualMatchError(null);
+      setAiMatchError(null);
       if (ledger) void saveToSupabase(data, ledger);
     },
     [ledger, saveToSupabase],
@@ -163,6 +217,7 @@ export function ReconDashboard() {
       setSelectedBankLineId(null);
       setSelectedLedgerLineId(null);
       setManualMatchError(null);
+      setAiMatchError(null);
       if (bank) void saveToSupabase(bank, data);
     },
     [bank, saveToSupabase],
@@ -185,6 +240,7 @@ export function ReconDashboard() {
             setSelectedBankLineId(null);
             setSelectedLedgerLineId(null);
             setManualMatchError(null);
+            setAiMatchError(null);
           }}
         />
         <FileDropzone
@@ -201,6 +257,7 @@ export function ReconDashboard() {
             setSelectedBankLineId(null);
             setSelectedLedgerLineId(null);
             setManualMatchError(null);
+            setAiMatchError(null);
           }}
         />
       </div>
@@ -339,7 +396,25 @@ export function ReconDashboard() {
               <p className="text-sm text-slate-500">
                 Select one unmatched bank line and one unmatched ledger line.
               </p>
+              <button
+                type="button"
+                disabled={
+                  isRunningAi ||
+                  matchState.result.unmatchedBank.length === 0 ||
+                  matchState.result.unmatchedLedger.length === 0
+                }
+                onClick={() => void runAiMatch()}
+                className="rounded-lg bg-violet-700 px-4 py-2 text-sm font-medium text-white hover:bg-violet-800 disabled:cursor-not-allowed disabled:bg-slate-300"
+              >
+                {isRunningAi ? "Running AI Match…" : "Run AI Match"}
+              </button>
             </div>
+
+            {aiMatchError ? (
+              <p className="rounded-xl bg-red-50 px-4 py-3 text-sm text-red-700" role="alert">
+                {aiMatchError}
+              </p>
+            ) : null}
 
             {manualMatchError ? (
               <p className="rounded-xl bg-red-50 px-4 py-3 text-sm text-red-700" role="alert">

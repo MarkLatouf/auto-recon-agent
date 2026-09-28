@@ -13,11 +13,11 @@
  */
 
 import { useCallback, useState } from "react";
-import type { MatchResult, MatchedPair, ParsedCsv } from "@/lib/types";
 import { autoMatch, daysBetween, toIsoDate } from "@/lib/recon/matching";
 import { loadSessionLines } from "@/lib/supabase/loadSessionLines";
 import { persistManualMatch, persistMatches } from "@/lib/supabase/persistMatches";
 import { persistReconUpload } from "@/lib/supabase/persistRecon";
+import type { LoadedSession, MatchResult, MatchedPair, ParsedCsv } from "@/lib/types";
 import { CsvTable } from "./CsvTable";
 import { FileDropzone } from "./FileDropzone";
 import { MatchResults } from "./MatchResults";
@@ -40,14 +40,33 @@ type PersistMatchesState =
   | { status: "saved"; savedCount: number }
   | { status: "error"; message: string };
 
-export function ReconDashboard() {
-  const [bank, setBank] = useState<ParsedCsv | null>(null);
-  const [ledger, setLedger] = useState<ParsedCsv | null>(null);
-  const [saveState, setSaveState] = useState<SaveState>({ status: "idle" });
-  const [matchState, setMatchState] = useState<MatchUiState>({ status: "idle" });
-  const [persistMatchesState, setPersistMatchesState] = useState<PersistMatchesState>({
-    status: "idle",
-  });
+export function ReconDashboard({
+  inspectSession = null,
+}: {
+  inspectSession?: LoadedSession | null;
+}) {
+  const [bank, setBank] = useState<ParsedCsv | null>(inspectSession?.bank ?? null);
+  const [ledger, setLedger] = useState<ParsedCsv | null>(inspectSession?.ledger ?? null);
+  const [saveState, setSaveState] = useState<SaveState>(
+    inspectSession
+      ? {
+          status: "saved",
+          sessionId: inspectSession.sessionId,
+          bankCount: inspectSession.bank.rows.length,
+          ledgerCount: inspectSession.ledger.rows.length,
+        }
+      : { status: "idle" },
+  );
+  const [matchState, setMatchState] = useState<MatchUiState>(
+    inspectSession
+      ? { status: "done", result: inspectSession.matchResult }
+      : { status: "idle" },
+  );
+  const [persistMatchesState, setPersistMatchesState] = useState<PersistMatchesState>(
+    inspectSession
+      ? { status: "saved", savedCount: inspectSession.matchCount }
+      : { status: "idle" },
+  );
   // Exactly one bank line and one ledger line may be selected at a time.
   // `null` means “nothing picked in this list.”
   const [selectedBankLineId, setSelectedBankLineId] = useState<string | null>(null);
@@ -225,6 +244,16 @@ export function ReconDashboard() {
 
   return (
     <div className="space-y-8">
+      {inspectSession ? (
+        <p className="rounded-xl border border-teal-100 bg-teal-50 px-4 py-3 text-sm text-teal-900">
+          Inspecting saved session{" "}
+          <span className="font-mono text-xs">{inspectSession.sessionId}</span>
+          {" · "}
+          {inspectSession.matchCount} saved match
+          {inspectSession.matchCount === 1 ? "" : "es"}.
+        </p>
+      ) : null}
+
       <div className="grid gap-4 md:grid-cols-2">
         <FileDropzone
           kind="bank"
@@ -270,7 +299,8 @@ export function ReconDashboard() {
 
       {saveState.status === "saved" ? (
         <p className="rounded-xl bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
-          Saved session <span className="font-mono text-xs">{saveState.sessionId}</span>
+          {inspectSession ? "Loaded" : "Saved"} session{" "}
+          <span className="font-mono text-xs">{saveState.sessionId}</span>
           {" · "}
           {saveState.bankCount} bank lines
           {" · "}

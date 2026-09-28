@@ -32,6 +32,14 @@ export function matchTypeFromTier(tier: MatchTier): string {
   return tier === 1 ? "tier_1" : "tier_2";
 }
 
+/** Reverse of matchTypeFromTier, for loading saved rows back into the UI. */
+export function tierFromMatchType(matchType: string): MatchTier {
+  if (matchType === "manual") return "manual";
+  if (matchType === "tier_3") return 3;
+  if (matchType === "tier_2") return 2;
+  return 1;
+}
+
 /**
  * One user-chosen pair. Unlike Auto-Match, this is saved immediately
  * instead of waiting for the bulk “Save Matches” button.

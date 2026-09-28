@@ -1,32 +1,16 @@
 /**
  * Home page — a Server Component.
  *
- * In the App Router, files named `page.tsx` become routes.
- * This file is `/` (the homepage).
- *
- * It stays a Server Component: it renders static heading copy on the server,
- * then mounts <ReconDashboard />, which is a Client Component for uploads.
+ * Workspace is a Client Component so the New / Past Sessions toggle can
+ * use React state. This file still owns the page route (`/`).
  */
 
-import { ReconDashboard } from "@/components/ReconDashboard";
+import { Workspace } from "@/components/Workspace";
 
 export default function HomePage() {
   return (
     <main className="mx-auto max-w-7xl px-4 py-10 sm:px-6 lg:px-8">
-      <header className="mb-8">
-        <p className="text-sm font-medium uppercase tracking-wide text-teal-700">
-          Auto-reconciliation
-        </p>
-        <h1 className="mt-1 text-3xl font-semibold tracking-tight text-slate-900">
-          Bank vs ledger
-        </h1>
-        <p className="mt-2 max-w-2xl text-slate-600">
-          Upload two CSV files. We parse them in the browser, preview them side
-          by side, then save a session plus both line lists to Supabase.
-        </p>
-      </header>
-
-      <ReconDashboard />
+      <Workspace />
     </main>
   );
 }

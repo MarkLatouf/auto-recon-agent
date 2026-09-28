@@ -49,3 +49,21 @@ export type MatchResult = {
   unmatchedBank: ReconLine[];
   unmatchedLedger: ReconLine[];
 };
+
+/** One row from `recon_sessions` plus how many `matches` it has. */
+export type SessionSummary = {
+  id: string;
+  createdAt: string;
+  bankFilename: string;
+  ledgerFilename: string;
+  matchCount: number;
+};
+
+/** Everything the dashboard needs to inspect a saved session. */
+export type LoadedSession = {
+  sessionId: string;
+  bank: ParsedCsv;
+  ledger: ParsedCsv;
+  matchResult: MatchResult;
+  matchCount: number;
+};

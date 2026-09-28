@@ -8,14 +8,15 @@
  * 2) previews both tables
  * 3) when both files are ready, inserts a recon_sessions row plus line rows
  * 4) Auto-Match loads those rows and runs Tier 1 + Tier 2 pairing
- * 5) Save Matches writes the pairs into the `matches` table
+ * 5) Save Matches writes Auto-Match pairs into the `matches` table
+ * 6) Manual Match lets the user pick one unmatched bank + ledger line
  */
 
 import { useCallback, useState } from "react";
 import type { MatchResult, ParsedCsv } from "@/lib/types";
-import { autoMatch } from "@/lib/recon/matching";
+import { autoMatch, daysBetween, toIsoDate } from "@/lib/recon/matching";
 import { loadSessionLines } from "@/lib/supabase/loadSessionLines";
-import { persistMatches } from "@/lib/supabase/persistMatches";
+import { persistManualMatch, persistMatches } from "@/lib/supabase/persistMatches";
 import { persistReconUpload } from "@/lib/supabase/persistRecon";
 import { CsvTable } from "./CsvTable";
 import { FileDropzone } from "./FileDropzone";
@@ -47,11 +48,20 @@ export function ReconDashboard() {
   const [persistMatchesState, setPersistMatchesState] = useState<PersistMatchesState>({
     status: "idle",
   });
+  // Exactly one bank line and one ledger line may be selected at a time.
+  // `null` means “nothing picked in this list.”
+  const [selectedBankLineId, setSelectedBankLineId] = useState<string | null>(null);
+  const [selectedLedgerLineId, setSelectedLedgerLineId] = useState<string | null>(null);
+  const [manualMatchError, setManualMatchError] = useState<string | null>(null);
+  const [isSavingManual, setIsSavingManual] = useState(false);
 
   const saveToSupabase = useCallback(async (nextBank: ParsedCsv, nextLedger: ParsedCsv) => {
     setSaveState({ status: "saving" });
     setMatchState({ status: "idle" });
     setPersistMatchesState({ status: "idle" });
+    setSelectedBankLineId(null);
+    setSelectedLedgerLineId(null);
+    setManualMatchError(null);
     try {
       const result = await persistReconUpload(nextBank, nextLedger);
       setSaveState({ status: "saved", ...result });
@@ -64,6 +74,9 @@ export function ReconDashboard() {
   const runAutoMatch = useCallback(async (sessionId: string) => {
     setMatchState({ status: "running" });
     setPersistMatchesState({ status: "idle" });
+    setSelectedBankLineId(null);
+    setSelectedLedgerLineId(null);
+    setManualMatchError(null);
     try {
       const { bankLines, ledgerLines } = await loadSessionLines(sessionId);
       setMatchState({ status: "done", result: autoMatch(bankLines, ledgerLines) });
@@ -84,12 +97,58 @@ export function ReconDashboard() {
     }
   }, []);
 
+  const saveManualMatch = useCallback(async () => {
+    if (saveState.status !== "saved" || matchState.status !== "done") return;
+    if (!selectedBankLineId || !selectedLedgerLineId) return;
+
+    const bankLine = matchState.result.unmatchedBank.find((line) => line.id === selectedBankLineId);
+    const ledgerLine = matchState.result.unmatchedLedger.find(
+      (line) => line.id === selectedLedgerLineId,
+    );
+    if (!bankLine || !ledgerLine) return;
+
+    setIsSavingManual(true);
+    setManualMatchError(null);
+    try {
+      await persistManualMatch(saveState.sessionId, bankLine.id, ledgerLine.id);
+
+      const bankDate = toIsoDate(bankLine.transaction_date);
+      const ledgerDate = toIsoDate(ledgerLine.transaction_date);
+      const dateDiffDays =
+        bankDate && ledgerDate ? daysBetween(bankDate, ledgerDate) : 0;
+
+      setMatchState({
+        status: "done",
+        result: {
+          matched: [
+            ...matchState.result.matched,
+            { bank: bankLine, ledger: ledgerLine, tier: "manual", dateDiffDays },
+          ],
+          unmatchedBank: matchState.result.unmatchedBank.filter((line) => line.id !== bankLine.id),
+          unmatchedLedger: matchState.result.unmatchedLedger.filter(
+            (line) => line.id !== ledgerLine.id,
+          ),
+        },
+      });
+      setSelectedBankLineId(null);
+      setSelectedLedgerLineId(null);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Could not save manual match.";
+      setManualMatchError(message);
+    } finally {
+      setIsSavingManual(false);
+    }
+  }, [saveState, matchState, selectedBankLineId, selectedLedgerLineId]);
+
   const handleBank = useCallback(
     (data: ParsedCsv) => {
       setBank(data);
       setSaveState({ status: "idle" });
       setMatchState({ status: "idle" });
       setPersistMatchesState({ status: "idle" });
+      setSelectedBankLineId(null);
+      setSelectedLedgerLineId(null);
+      setManualMatchError(null);
       if (ledger) void saveToSupabase(data, ledger);
     },
     [ledger, saveToSupabase],
@@ -101,6 +160,9 @@ export function ReconDashboard() {
       setSaveState({ status: "idle" });
       setMatchState({ status: "idle" });
       setPersistMatchesState({ status: "idle" });
+      setSelectedBankLineId(null);
+      setSelectedLedgerLineId(null);
+      setManualMatchError(null);
       if (bank) void saveToSupabase(bank, data);
     },
     [bank, saveToSupabase],
@@ -120,6 +182,9 @@ export function ReconDashboard() {
             setSaveState({ status: "idle" });
             setMatchState({ status: "idle" });
             setPersistMatchesState({ status: "idle" });
+            setSelectedBankLineId(null);
+            setSelectedLedgerLineId(null);
+            setManualMatchError(null);
           }}
         />
         <FileDropzone
@@ -133,6 +198,9 @@ export function ReconDashboard() {
             setSaveState({ status: "idle" });
             setMatchState({ status: "idle" });
             setPersistMatchesState({ status: "idle" });
+            setSelectedBankLineId(null);
+            setSelectedLedgerLineId(null);
+            setManualMatchError(null);
           }}
         />
       </div>
@@ -256,7 +324,28 @@ export function ReconDashboard() {
               {matchState.result.matched.length === 0 ? (
                 <p className="text-sm text-slate-500">No pairs to save.</p>
               ) : null}
+              <button
+                type="button"
+                disabled={
+                  !selectedBankLineId ||
+                  !selectedLedgerLineId ||
+                  isSavingManual
+                }
+                onClick={() => void saveManualMatch()}
+                className="rounded-lg border border-sky-600 bg-sky-600 px-4 py-2 text-sm font-medium text-white hover:bg-sky-700 disabled:cursor-not-allowed disabled:border-slate-300 disabled:bg-slate-300"
+              >
+                {isSavingManual ? "Saving manual match…" : "Manual Match"}
+              </button>
+              <p className="text-sm text-slate-500">
+                Select one unmatched bank line and one unmatched ledger line.
+              </p>
             </div>
+
+            {manualMatchError ? (
+              <p className="rounded-xl bg-red-50 px-4 py-3 text-sm text-red-700" role="alert">
+                {manualMatchError}
+              </p>
+            ) : null}
 
             {persistMatchesState.status === "saved" ? (
               <p className="rounded-xl bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
@@ -284,7 +373,17 @@ export function ReconDashboard() {
               </div>
             ) : null}
 
-            <MatchResults result={matchState.result} />
+            <MatchResults
+              result={matchState.result}
+              selectedBankLineId={selectedBankLineId}
+              selectedLedgerLineId={selectedLedgerLineId}
+              onSelectBank={(id) =>
+                setSelectedBankLineId((current) => (current === id ? null : id))
+              }
+              onSelectLedger={(id) =>
+                setSelectedLedgerLineId((current) => (current === id ? null : id))
+              }
+            />
           </>
         ) : null}
       </section>

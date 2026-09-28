@@ -1,35 +1,73 @@
+"use client";
+
 /**
  * MatchResults
  *
- * Presentational lists for Auto-Match output: unmatched bank, unmatched
- * ledger, and matched pairs. No matching logic lives here.
+ * Unmatched lists are clickable so the user can pick one bank line and
+ * one ledger line for Manual Match. Matched pairs stay read-only.
  */
 
-import type { MatchResult, ReconLine } from "@/lib/types";
+import type { MatchResult, MatchTier, ReconLine } from "@/lib/types";
 
 function money(amount: number | null): string {
   if (amount === null) return "—";
   return amount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
-function LineCard({ line }: { line: ReconLine }) {
+function pairLabel(tier: MatchTier, dateDiffDays: number): string {
+  if (tier === "manual") return "Manual";
+  if (tier === 2) return `Tier 2 · ${dateDiffDays} day gap`;
+  return "Tier 1 · same date";
+}
+
+function LineCard({
+  line,
+  selected,
+  onToggle,
+}: {
+  line: ReconLine;
+  selected: boolean;
+  onToggle: () => void;
+}) {
   return (
-    <li className="rounded-lg border border-slate-100 bg-slate-50 px-3 py-2 text-sm">
-      <p className="font-medium text-slate-800">{line.description ?? "No description"}</p>
-      <p className="mt-1 text-xs text-slate-500">
-        {line.transaction_date ?? "No date"}
-        {" · "}
-        {money(line.amount)}
-      </p>
+    <li>
+      <button
+        type="button"
+        onClick={onToggle}
+        aria-pressed={selected}
+        className={[
+          "w-full rounded-lg border px-3 py-2 text-left text-sm transition",
+          selected
+            ? "border-sky-500 bg-sky-50 ring-2 ring-sky-200"
+            : "border-slate-100 bg-slate-50 hover:border-sky-300 hover:bg-sky-50/60",
+        ].join(" ")}
+      >
+        <p className="font-medium text-slate-800">{line.description ?? "No description"}</p>
+        <p className="mt-1 text-xs text-slate-500">
+          {line.transaction_date ?? "No date"}
+          {" · "}
+          {money(line.amount)}
+        </p>
+      </button>
     </li>
   );
 }
 
 type MatchResultsProps = {
   result: MatchResult;
+  selectedBankLineId: string | null;
+  selectedLedgerLineId: string | null;
+  onSelectBank: (id: string) => void;
+  onSelectLedger: (id: string) => void;
 };
 
-export function MatchResults({ result }: MatchResultsProps) {
+export function MatchResults({
+  result,
+  selectedBankLineId,
+  selectedLedgerLineId,
+  onSelectBank,
+  onSelectLedger,
+}: MatchResultsProps) {
   return (
     <div className="grid gap-4 lg:grid-cols-3">
       <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
@@ -40,7 +78,12 @@ export function MatchResults({ result }: MatchResultsProps) {
         ) : (
           <ul className="space-y-2">
             {result.unmatchedBank.map((line) => (
-              <LineCard key={line.id} line={line} />
+              <LineCard
+                key={line.id}
+                line={line}
+                selected={selectedBankLineId === line.id}
+                onToggle={() => onSelectBank(line.id)}
+              />
             ))}
           </ul>
         )}
@@ -54,7 +97,12 @@ export function MatchResults({ result }: MatchResultsProps) {
         ) : (
           <ul className="space-y-2">
             {result.unmatchedLedger.map((line) => (
-              <LineCard key={line.id} line={line} />
+              <LineCard
+                key={line.id}
+                line={line}
+                selected={selectedLedgerLineId === line.id}
+                onToggle={() => onSelectLedger(line.id)}
+              />
             ))}
           </ul>
         )}
@@ -73,8 +121,7 @@ export function MatchResults({ result }: MatchResultsProps) {
                 className="rounded-lg border border-emerald-100 bg-emerald-50 px-3 py-2 text-sm"
               >
                 <p className="text-xs font-medium uppercase tracking-wide text-emerald-800">
-                  Tier {pair.tier}
-                  {pair.tier === 2 ? ` · ${pair.dateDiffDays} day gap` : " · same date"}
+                  {pairLabel(pair.tier, pair.dateDiffDays)}
                 </p>
                 <p className="mt-1 text-slate-800">
                   Bank: {pair.bank.description ?? "—"} ({money(pair.bank.amount)})

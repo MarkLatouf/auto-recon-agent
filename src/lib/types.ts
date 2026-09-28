@@ -31,7 +31,8 @@ export type ReconLine = {
   source: DatasetKind;
 };
 
-export type MatchTier = 1 | 2;
+/** Auto tiers, or a pair the user chose by hand. */
+export type MatchTier = 1 | 2 | "manual";
 
 export type MatchedPair = {
   bank: ReconLine;

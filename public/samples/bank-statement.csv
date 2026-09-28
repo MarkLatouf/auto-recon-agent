@@ -3,3 +3,4 @@ Date,Description,Amount,Reference
 2026-01-05,Customer deposit,2500.00,DEP-8891
 2026-01-08,Office rent,-1800.00,ACH-912
 2026-01-12,Stripe payout,640.25,STR-331
+2026-01-18,Supplier cheque,-75.00,CHK-2001

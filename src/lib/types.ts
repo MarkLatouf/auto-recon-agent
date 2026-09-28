@@ -19,3 +19,30 @@ export type ParsedCsv = {
   headers: string[];
   rows: CsvRow[];
 };
+
+/** One persisted row from `bank_lines` or `ledger_lines`. */
+export type ReconLine = {
+  id: string;
+  session_id: string;
+  transaction_date: string | null;
+  description: string | null;
+  amount: number | null;
+  raw_data: CsvRow | null;
+  source: DatasetKind;
+};
+
+export type MatchTier = 1 | 2;
+
+export type MatchedPair = {
+  bank: ReconLine;
+  ledger: ReconLine;
+  tier: MatchTier;
+  /** Absolute calendar-day gap used to choose the pair (0 for Tier 1). */
+  dateDiffDays: number;
+};
+
+export type MatchResult = {
+  matched: MatchedPair[];
+  unmatchedBank: ReconLine[];
+  unmatchedLedger: ReconLine[];
+};

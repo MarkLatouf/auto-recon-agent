@@ -12,13 +12,13 @@
  * 7) Run AI Match embeds unmatched lines and pairs them by cosine similarity
  */
 
-import { useCallback, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { autoMatch, daysBetween, toIsoDate } from "@/lib/recon/matching";
 import { loadSessionLines } from "@/lib/supabase/loadSessionLines";
 import { persistManualMatch, persistMatches } from "@/lib/supabase/persistMatches";
 import { persistReconUpload } from "@/lib/supabase/persistRecon";
 import { exportMatchedCsv } from "@/lib/exportMatchedCsv";
-import type { LoadedSession, MatchResult, MatchedPair, ParsedCsv } from "@/lib/types";
+import type { LoadedSession, MatchResult, MatchTypeFilter, MatchedPair, ParsedCsv, SortConfig } from "@/lib/types";
 import { CsvTable } from "./CsvTable";
 import { FileDropzone } from "./FileDropzone";
 import { MatchResults } from "./MatchResults";
@@ -40,6 +40,29 @@ type PersistMatchesState =
   | { status: "saving" }
   | { status: "saved"; savedCount: number }
   | { status: "error"; message: string };
+
+function pairMatchesTypeFilter(tier: MatchedPair["tier"], filter: MatchTypeFilter): boolean {
+  if (filter === "All") return true;
+  if (filter === "Manual") return tier === "manual";
+  if (filter === "Tier 1") return tier === 1;
+  if (filter === "Tier 2") return tier === 2;
+  return tier === 3;
+}
+
+function pairMatchesSearch(pair: MatchedPair, query: string): boolean {
+  if (!query) return true;
+  const haystack = [
+    pair.bank.description ?? "",
+    pair.ledger.description ?? "",
+    pair.bank.amount === null ? "" : String(pair.bank.amount),
+    pair.bank.amount === null ? "" : pair.bank.amount.toFixed(2),
+    pair.ledger.amount === null ? "" : String(pair.ledger.amount),
+    pair.ledger.amount === null ? "" : pair.ledger.amount.toFixed(2),
+  ]
+    .join(" ")
+    .toLowerCase();
+  return haystack.includes(query);
+}
 
 export function ReconDashboard({
   inspectSession = null,
@@ -76,6 +99,43 @@ export function ReconDashboard({
   const [isSavingManual, setIsSavingManual] = useState(false);
   const [isRunningAi, setIsRunningAi] = useState(false);
   const [aiMatchError, setAiMatchError] = useState<string | null>(null);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [matchTypeFilter, setMatchTypeFilter] = useState<MatchTypeFilter>("All");
+  const [sortConfig, setSortConfig] = useState<SortConfig>({
+    key: "date",
+    direction: "asc",
+  });
+
+  const matchedPairs =
+    matchState.status === "done" ? matchState.result.matched : [];
+
+  const filteredAndSortedMatches = useMemo(() => {
+    const query = searchQuery.trim().toLowerCase();
+    const filtered = matchedPairs.filter(
+      (pair) => pairMatchesTypeFilter(pair.tier, matchTypeFilter) && pairMatchesSearch(pair, query),
+    );
+
+    const direction = sortConfig.direction === "asc" ? 1 : -1;
+    return [...filtered].sort((a, b) => {
+      if (sortConfig.key === "date") {
+        const left = a.bank.transaction_date ?? "";
+        const right = b.bank.transaction_date ?? "";
+        return left.localeCompare(right) * direction;
+      }
+      const left = a.bank.amount ?? Number.NEGATIVE_INFINITY;
+      const right = b.bank.amount ?? Number.NEGATIVE_INFINITY;
+      if (left === right) return 0;
+      return (left < right ? -1 : 1) * direction;
+    });
+  }, [matchedPairs, searchQuery, matchTypeFilter, sortConfig]);
+
+  const toggleSort = useCallback((key: SortConfig["key"]) => {
+    setSortConfig((current) =>
+      current.key === key
+        ? { key, direction: current.direction === "asc" ? "desc" : "asc" }
+        : { key, direction: "asc" },
+    );
+  }, []);
 
   const saveToSupabase = useCallback(async (nextBank: ParsedCsv, nextLedger: ParsedCsv) => {
     setSaveState({ status: "saving" });
@@ -489,6 +549,13 @@ export function ReconDashboard({
 
             <MatchResults
               result={matchState.result}
+              filteredAndSortedMatches={filteredAndSortedMatches}
+              searchQuery={searchQuery}
+              matchTypeFilter={matchTypeFilter}
+              sortConfig={sortConfig}
+              onSearchQueryChange={setSearchQuery}
+              onMatchTypeFilterChange={setMatchTypeFilter}
+              onToggleSort={toggleSort}
               selectedBankLineId={selectedBankLineId}
               selectedLedgerLineId={selectedLedgerLineId}
               onSelectBank={(id) =>

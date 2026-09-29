@@ -59,6 +59,13 @@ export type SessionSummary = {
   matchCount: number;
 };
 
+export type MatchTypeFilter = "All" | "Tier 1" | "Tier 2" | "Tier 3" | "Manual";
+
+export type SortConfig = {
+  key: "date" | "amount";
+  direction: "asc" | "desc";
+};
+
 /** Everything the dashboard needs to inspect a saved session. */
 export type LoadedSession = {
   sessionId: string;

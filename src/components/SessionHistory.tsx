@@ -7,7 +7,7 @@
  * load that session’s lines and matches into the dashboard.
  */
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { exportMatchedCsv } from "@/lib/exportMatchedCsv";
 import { listReconSessions, loadSessionMatchesForExport } from "@/lib/supabase/sessionHistory";
 import type { SessionSummary } from "@/lib/types";
@@ -38,12 +38,40 @@ function formatWhen(iso: string): string {
   return date.toLocaleString();
 }
 
+type SessionSort = "date-newest" | "date-oldest" | "matches-high" | "matches-low";
+
 export function SessionHistory({ onSelectSession, isLoadingSession }: SessionHistoryProps) {
   const [sessions, setSessions] = useState<SessionSummary[]>([]);
   const [status, setStatus] = useState<"loading" | "ready" | "error">("loading");
   const [error, setError] = useState<string | null>(null);
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
   const [downloadError, setDownloadError] = useState<string | null>(null);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [sortOption, setSortOption] = useState<SessionSort>("date-newest");
+
+  const filteredAndSortedSessions = useMemo(() => {
+    const query = searchQuery.trim().toLowerCase();
+    const filtered = sessions.filter((session) => {
+      if (!query) return true;
+      return (
+        session.bankFilename.toLowerCase().includes(query) ||
+        session.ledgerFilename.toLowerCase().includes(query)
+      );
+    });
+
+    return [...filtered].sort((a, b) => {
+      if (sortOption === "date-newest") {
+        return b.createdAt.localeCompare(a.createdAt);
+      }
+      if (sortOption === "date-oldest") {
+        return a.createdAt.localeCompare(b.createdAt);
+      }
+      if (sortOption === "matches-high") {
+        return b.matchCount - a.matchCount;
+      }
+      return a.matchCount - b.matchCount;
+    });
+  }, [sessions, searchQuery, sortOption]);
 
   useEffect(() => {
     let cancelled = false;
@@ -93,6 +121,44 @@ export function SessionHistory({ onSelectSession, isLoadingSession }: SessionHis
 
   return (
     <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+      <div className="flex flex-wrap items-end justify-between gap-3 border-b border-slate-100 px-4 py-4">
+        <div>
+          <h3 className="text-base font-semibold text-slate-800">Past sessions</h3>
+          <p className="text-xs text-slate-500">
+            Showing {filteredAndSortedSessions.length} of {sessions.length}
+          </p>
+        </div>
+        <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto">
+          <label className="sr-only" htmlFor="session-search">
+            Search by filename
+          </label>
+          <input
+            id="session-search"
+            type="search"
+            value={searchQuery}
+            onChange={(event) => setSearchQuery(event.target.value)}
+            placeholder="Search bank or ledger filename…"
+            className="min-w-[220px] flex-1 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-800 outline-none placeholder:text-slate-400 focus:border-teal-500 focus:bg-white focus:ring-2 focus:ring-teal-100 sm:flex-none sm:w-72"
+          />
+          <label className="sr-only" htmlFor="session-sort">
+            Sort sessions
+          </label>
+          <select
+            id="session-sort"
+            value={sortOption}
+            onChange={(event) => setSortOption(event.target.value as SessionSort)}
+            className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-800 outline-none focus:border-teal-500 focus:bg-white focus:ring-2 focus:ring-teal-100"
+          >
+            <option value="date-newest">Date (Newest First)</option>
+            <option value="date-oldest">Date (Oldest First)</option>
+            <option value="matches-high">Matches (High to Low)</option>
+            <option value="matches-low">Matches (Low to High)</option>
+          </select>
+        </div>
+      </div>
+      {filteredAndSortedSessions.length === 0 ? (
+        <p className="px-4 py-6 text-sm text-slate-500">No sessions match this filename search.</p>
+      ) : (
       <table className="min-w-full border-collapse text-left text-sm">
         <thead className="bg-slate-50">
           <tr>
@@ -107,7 +173,7 @@ export function SessionHistory({ onSelectSession, isLoadingSession }: SessionHis
           </tr>
         </thead>
         <tbody>
-          {sessions.map((session) => (
+          {filteredAndSortedSessions.map((session) => (
             <tr
               key={session.id}
               tabIndex={0}
@@ -162,6 +228,7 @@ export function SessionHistory({ onSelectSession, isLoadingSession }: SessionHis
           ))}
         </tbody>
       </table>
+      )}
       {downloadError ? (
         <p className="border-t border-red-100 bg-red-50 px-4 py-3 text-sm text-red-700" role="alert">
           {downloadError}

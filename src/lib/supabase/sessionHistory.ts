@@ -46,8 +46,24 @@ function linesToCsv(kind: ParsedCsv["kind"], fileName: string, lines: ReconLine[
   return { kind, fileName, headers, rows };
 }
 
+function toSessionSummary(row: SessionRow, matchCount: number): SessionSummary {
+  return {
+    id: row.id,
+    createdAt: row.created_at,
+    bankFilename: row.bank_filename,
+    ledgerFilename: row.ledger_filename,
+    matchCount,
+  };
+}
+
+/** Drop abandoned uploads that were never saved (0 rows in `matches`). */
+function withSavedMatches(rows: SessionSummary[]): SessionSummary[] {
+  return rows.filter((session) => session.matchCount >= 1);
+}
+
 /**
  * Newest sessions first, with a match count per session.
+ * Only sessions that already have at least one saved match are returned.
  *
  * Query breakdown:
  * - `.from("recon_sessions")` — the table
@@ -67,13 +83,11 @@ export async function listReconSessions(): Promise<SessionSummary[]> {
     .order("created_at", { ascending: false });
 
   if (!nested.error && nested.data) {
-    return (nested.data as SessionRow[]).map((row) => ({
-      id: row.id,
-      createdAt: row.created_at,
-      bankFilename: row.bank_filename,
-      ledgerFilename: row.ledger_filename,
-      matchCount: row.matches?.[0]?.count ?? 0,
-    }));
+    return withSavedMatches(
+      (nested.data as SessionRow[]).map((row) =>
+        toSessionSummary(row, row.matches?.[0]?.count ?? 0),
+      ),
+    );
   }
 
   const sessions = await supabase
@@ -96,13 +110,11 @@ export async function listReconSessions(): Promise<SessionSummary[]> {
     counts.set(sessionId, (counts.get(sessionId) ?? 0) + 1);
   }
 
-  return (sessions.data as SessionRow[]).map((row) => ({
-    id: row.id,
-    createdAt: row.created_at,
-    bankFilename: row.bank_filename,
-    ledgerFilename: row.ledger_filename,
-    matchCount: counts.get(row.id) ?? 0,
-  }));
+  return withSavedMatches(
+    (sessions.data as SessionRow[]).map((row) =>
+      toSessionSummary(row, counts.get(row.id) ?? 0),
+    ),
+  );
 }
 
 type JoinedLine = {

@@ -3,8 +3,9 @@
 /**
  * SessionHistory
  *
- * Lists recon_sessions (newest first). Clicking a row asks the parent to
- * load that session’s lines and matches into the dashboard.
+ * Lists recon_sessions that have at least one saved match (newest first).
+ * Clicking a row asks the parent to load that session’s lines and matches
+ * into the dashboard.
  */
 
 import { useEffect, useMemo, useState } from "react";

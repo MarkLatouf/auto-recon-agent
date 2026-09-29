@@ -1,19 +1,35 @@
 /**
- * Server-side Supabase client.
+ * Server-side Supabase client (Server Components, Route Handlers, Server Actions).
  *
- * Used by API routes so GEMINI_API_KEY never ships to the browser.
- * Still uses the public anon key (not the service-role secret).
+ * `createServerClient` from @supabase/ssr reads the Auth cookies on this
+ * request so `auth.getUser()` matches whoever is signed in in the browser.
+ * The secret service-role key is still not used here.
  */
 
-import { createClient } from "@supabase/supabase-js";
+import { createServerClient } from "@supabase/ssr";
+import { cookies } from "next/headers";
+import { getSupabasePublicEnv } from "@/lib/supabase/env";
 
-export function createServerSupabase() {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+export async function createServerSupabase() {
+  const { url, anonKey } = getSupabasePublicEnv();
+  const cookieStore = await cookies();
 
-  if (!url || !anonKey) {
-    throw new Error("Missing NEXT_PUBLIC_SUPABASE_URL or NEXT_PUBLIC_SUPABASE_ANON_KEY.");
-  }
-
-  return createClient(url, anonKey);
+  return createServerClient(url, anonKey, {
+    cookies: {
+      getAll() {
+        return cookieStore.getAll();
+      },
+      setAll(cookiesToSet) {
+        // Server Components cannot always write cookies; middleware does that
+        // after a token refresh. Ignore the error so pages can still read the user.
+        try {
+          for (const { name, value, options } of cookiesToSet) {
+            cookieStore.set(name, value, options);
+          }
+        } catch {
+          /* middleware refreshes the session cookies instead */
+        }
+      },
+    },
+  });
 }

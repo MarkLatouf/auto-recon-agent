@@ -69,6 +69,7 @@ function withSavedMatches(rows: SessionSummary[]): SessionSummary[] {
  * - `.from("recon_sessions")` — the table
  * - `.select("..., matches(count)")` — columns we need, plus a *nested count*
  *   of related `matches` rows (PostgREST follows the session_id foreign key)
+ * - `.eq("user_id", user.id)` — only this signed-in user’s sessions
  * - `.order("created_at", { ascending: false })` — latest upload at the top
  *
  * If the nested count is unavailable, we fall back to a second query that
@@ -77,9 +78,18 @@ function withSavedMatches(rows: SessionSummary[]): SessionSummary[] {
 export async function listReconSessions(): Promise<SessionSummary[]> {
   const supabase = createClient();
 
+  const {
+    data: { user },
+    error: authError,
+  } = await supabase.auth.getUser();
+  if (authError || !user) {
+    throw new Error("You must be signed in to view past sessions.");
+  }
+
   const nested = await supabase
     .from("recon_sessions")
     .select("id, created_at, bank_filename, ledger_filename, matches(count)")
+    .eq("user_id", user.id)
     .order("created_at", { ascending: false });
 
   if (!nested.error && nested.data) {
@@ -93,6 +103,7 @@ export async function listReconSessions(): Promise<SessionSummary[]> {
   const sessions = await supabase
     .from("recon_sessions")
     .select("id, created_at, bank_filename, ledger_filename")
+    .eq("user_id", user.id)
     .order("created_at", { ascending: false });
 
   if (sessions.error) {

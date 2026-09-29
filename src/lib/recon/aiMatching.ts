@@ -161,7 +161,7 @@ async function loadLines(
   source: ReconLine["source"],
 ): Promise<LineWithEmbedding[]> {
   if (ids.length === 0) return [];
-  const supabase = createServerSupabase();
+  const supabase = await createServerSupabase();
   const { data, error } = await supabase
     .from(table)
     .select("id, session_id, transaction_date, description, amount, raw_data, embedding")
@@ -180,7 +180,7 @@ async function saveEmbedding(
   id: string,
   embedding: number[],
 ): Promise<void> {
-  const supabase = createServerSupabase();
+  const supabase = await createServerSupabase();
   const first = await supabase.from(table).update({ embedding }).eq("id", id);
   if (!first.error) return;
 

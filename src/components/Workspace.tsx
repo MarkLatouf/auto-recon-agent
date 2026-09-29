@@ -3,11 +3,13 @@
 /**
  * Workspace
  *
- * Client shell for the homepage: toggle New Reconciliation vs Past Sessions.
- * The page itself stays a Server Component and just renders us.
+ * Client shell for `/` (new recon) and `/history` (past sessions).
+ * Opening a history row goes to `/?session=<id>` so the dashboard can load it.
  */
 
-import { useCallback, useState } from "react";
+import Link from "next/link";
+import { usePathname, useRouter } from "next/navigation";
+import { useCallback, useEffect, useState } from "react";
 import { ReconDashboard } from "@/components/ReconDashboard";
 import { SessionHistory } from "@/components/SessionHistory";
 import { loadReconSession } from "@/lib/supabase/sessionHistory";
@@ -15,19 +17,20 @@ import type { LoadedSession } from "@/lib/types";
 
 type View = "new" | "history";
 
-export function Workspace() {
-  const [view, setView] = useState<View>("new");
+type WorkspaceProps = {
+  initialView: View;
+  inspectSessionId?: string | null;
+};
+
+export function Workspace({ initialView, inspectSessionId = null }: WorkspaceProps) {
+  const pathname = usePathname();
+  const router = useRouter();
+  const view: View = pathname === "/history" ? "history" : initialView;
+
   const [inspectSession, setInspectSession] = useState<LoadedSession | null>(null);
   const [dashboardKey, setDashboardKey] = useState(0);
   const [isLoadingSession, setIsLoadingSession] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
-
-  const showNew = useCallback(() => {
-    setView("new");
-    setInspectSession(null);
-    setLoadError(null);
-    setDashboardKey((key) => key + 1);
-  }, []);
 
   const openSession = useCallback(async (sessionId: string) => {
     setIsLoadingSession(true);
@@ -36,13 +39,26 @@ export function Workspace() {
       const loaded = await loadReconSession(sessionId);
       setInspectSession(loaded);
       setDashboardKey((key) => key + 1);
-      setView("new");
     } catch (err) {
       setLoadError(err instanceof Error ? err.message : "Could not open that session.");
     } finally {
       setIsLoadingSession(false);
     }
   }, []);
+
+  useEffect(() => {
+    if (!inspectSessionId) {
+      setInspectSession(null);
+      return;
+    }
+    void openSession(inspectSessionId);
+  }, [inspectSessionId, openSession]);
+
+  const navButtonClass = (active: boolean) =>
+    [
+      "rounded-md px-3 py-1.5 font-medium",
+      active ? "bg-teal-700 text-white" : "text-slate-600 hover:bg-slate-50",
+    ].join(" ");
 
   return (
     <>
@@ -55,29 +71,12 @@ export function Workspace() {
             Bank vs ledger
           </h1>
           <div className="flex rounded-lg border border-slate-200 bg-white p-1 text-sm">
-            <button
-              type="button"
-              onClick={showNew}
-              className={[
-                "rounded-md px-3 py-1.5 font-medium",
-                view === "new" ? "bg-teal-700 text-white" : "text-slate-600 hover:bg-slate-50",
-              ].join(" ")}
-            >
+            <Link href="/" className={navButtonClass(view === "new")}>
               New Reconciliation
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                setView("history");
-                setLoadError(null);
-              }}
-              className={[
-                "rounded-md px-3 py-1.5 font-medium",
-                view === "history" ? "bg-teal-700 text-white" : "text-slate-600 hover:bg-slate-50",
-              ].join(" ")}
-            >
+            </Link>
+            <Link href="/history" className={navButtonClass(view === "history")}>
               Past Sessions
-            </button>
+            </Link>
           </div>
         </div>
         <p className="mt-2 max-w-2xl text-slate-600">
@@ -96,7 +95,12 @@ export function Workspace() {
       ) : null}
 
       {view === "history" ? (
-        <SessionHistory onSelectSession={(id) => void openSession(id)} isLoadingSession={isLoadingSession} />
+        <SessionHistory
+          onSelectSession={(id) => {
+            router.push(`/?session=${encodeURIComponent(id)}`);
+          }}
+          isLoadingSession={isLoadingSession}
+        />
       ) : (
         <ReconDashboard key={dashboardKey} inspectSession={inspectSession} />
       )}

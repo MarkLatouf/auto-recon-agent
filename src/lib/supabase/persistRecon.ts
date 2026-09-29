@@ -49,12 +49,21 @@ export async function persistReconUpload(
 ): Promise<PersistResult> {
   const supabase = createClient();
 
+  const {
+    data: { user },
+    error: authError,
+  } = await supabase.auth.getUser();
+  if (authError || !user) {
+    throw new Error("You must be signed in to save a session.");
+  }
+
   // Step 1 — create the parent session first.
   // Child rows have a foreign key (`session_id`) so the session must exist.
-  // `user_id` stays null until we add login.
+  // `user_id` is the Auth UUID so Row Level Security can scope rows per user.
   const { data: session, error: sessionError } = await supabase
     .from("recon_sessions")
     .insert({
+      user_id: user.id,
       bank_filename: bank.fileName,
       ledger_filename: ledger.fileName,
     })

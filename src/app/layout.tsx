@@ -7,6 +7,8 @@
 
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
+import { SiteHeader } from "@/components/SiteHeader";
+import { createServerSupabase } from "@/lib/supabase/server";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -24,14 +26,26 @@ export const metadata: Metadata = {
   description: "Upload a bank statement and accounting ledger, then reconcile them side by side.",
 };
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  let email: string | null = null;
+  try {
+    const supabase = await createServerSupabase();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    email = user?.email ?? null;
+  } catch {
+    email = null;
+  }
+
   return (
     <html lang="en">
       <body className={`${geistSans.variable} ${geistMono.variable} min-h-screen antialiased`}>
+        <SiteHeader email={email} />
         {children}
       </body>
     </html>

@@ -1,6 +1,20 @@
 Date,Account,Memo,Amount,Source
-2026-01-03,Expenses:Supplies,Acme invoice 441,-120.00,CHK-1042
-2026-01-05,Income:Sales,Invoice 2201 paid,2500.00,DEP-8891
-2026-01-08,Expenses:Rent,January warehouse,-1800.00,ACH-912
-2026-01-15,Income:Sales,Unmatched invoice,199.00,INV-778
-2026-01-20,Expenses:Supplies,Supplier cheque,-75.00,CHK-2001
+2026-02-01,Income:Services,Client A Retainer,5000.00,DEP-001
+2026-02-02,Expenses:Software,AWS Cloud Services,-150.00,ACH-002
+2026-02-05,Expenses:Office,Office Supplies,-45.50,POS-003
+2026-02-10,Income:Consulting,Consulting Fees,1200.00,DEP-004
+2026-02-12,Expenses:Utilities,Internet Bill,-89.99,ACH-005
+2026-02-13,Expenses:Contractors,Upwork Escrow Release,850.00,ACH-006
+2026-02-17,Expenses:Marketing,Mailchimp Subscription,-35.00,CC-007
+2026-02-19,Assets:Equipment,Laptops Direct,-2400.00,CHK-008
+2026-02-20,Income:Services,Client B Invoice,3200.00,DEP-009
+2026-02-26,Expenses:Facilities,Cleaning Service,-150.00,CHK-010
+2026-02-01,Expenses:Marketing,Digital Ads Team Q1 Fee,-5000.00,BILL-012
+2026-02-12,Expenses:Meals,Employee Friday Catering,-85.50,EXP-013
+2026-02-14,Expenses:Meals,Client Meeting Beverages,-14.20,EXP-014
+2026-02-20,Expenses:Payroll,February Salary Distribution,-8450.00,PAY-015
+2026-02-10,Expenses:Utilities,Company Mobile Phones,-120.00,BILL-016
+2026-02-11,Liabilities:Refunds,Pending Refund to Client,-500.00,REF-01
+2026-02-16,Income:Grants,Expected Grant Income,10000.00,GRN-01
+2026-02-22,Equity:Draws,Owner Draw,-2000.00,DRW-01
+2026-02-27,Expenses:Software,Software License Renewal,-450.00,LIC-01
